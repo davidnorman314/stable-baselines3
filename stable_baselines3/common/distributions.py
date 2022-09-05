@@ -368,18 +368,16 @@ class CategoricalDistributionLimitedActions(Distribution):
         if invalid_logit_value >= -100.0:
             invalid_logit_value = -100.0
 
-        new_action_logits = action_logits.clone()
+        valid_actions_list = []
         for obs_index in range(len(obs)):
             valid_actions = self._get_valid_actions(obs[obs_index])
+            valid_actions_list.append(valid_actions)
 
-            for i in range(self.action_dim):
-                if not valid_actions[i]:
-                    if False:
-                        print("invalid action", i)
-                    new_action_logits[obs_index][i] = invalid_logit_value
-                else:
-                    if False:
-                        print("valid action", i)
+        all_valid_actions = th.stack(valid_actions_list)
+
+        new_action_logits = th.where(
+            all_valid_actions == 0, invalid_logit_value, action_logits
+        )
 
         if False:
             print("action_logits", action_logits)
