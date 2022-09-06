@@ -414,7 +414,7 @@ class CategoricalDistributionLimitedActions(Distribution):
         return ret
 
     def mode(self) -> th.Tensor:
-        return th.argmax(self.distribution.probs, dim=1)
+        return th.argmax(self.sample_distribution.probs, dim=1)
 
     def actions_from_params(
         self, action_logits: th.Tensor, get_valid_actions, deterministic: bool = False
