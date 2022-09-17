@@ -371,10 +371,10 @@ class CategoricalDistributionLimitedActions(Distribution):
         invalid_actions_float = self._get_invalid_actions_layer(obs)
         invalid_actions = invalid_actions_float > 0.0
 
+        self._original_action_logits = action_logits
+        self._invalid_actions = invalid_actions
         if False:
-            self._original_action_logits = action_logits
             self._valid_actions = self._get_invalid_actions_obj.get_valid_actions(obs)
-            self._invalid_actions = invalid_actions
 
         # Create a distribution to use when sampling.
         # Adjust the logits so that the invalid actions have small probabilities.
@@ -385,9 +385,8 @@ class CategoricalDistributionLimitedActions(Distribution):
         new_action_logits = action_logits.clone()
         new_action_logits[invalid_actions] = invalid_logit_value
 
-        if False:
-            self._invalid_logit_value = invalid_logit_value
-            self._new_action_logits = new_action_logits
+        self._invalid_logit_value = invalid_logit_value
+        self._new_action_logits = new_action_logits
 
         if False:
             print("")
