@@ -389,7 +389,7 @@ class CategoricalDistributionLimitedActions(Distribution):
             print("invalid_logit_value", invalid_logit_value)
             # traceback.print_stack(file=sys.stdout)
 
-        self.sample_distribution = Categorical(logits=action_logits)
+        self.sample_distribution = Categorical(logits=new_action_logits)
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
