@@ -332,14 +332,18 @@ class CategoricalDistributionLimitedActions(Distribution):
     :param action_dim: Number of discrete actions
     """
 
-    def __init__(self, action_dim: int, get_invalid_actions_layer):
+    def __init__(self, action_dim: int, get_invalid_actions_layer_obj):
         super().__init__()
         self.action_dim = action_dim
 
-        if get_invalid_actions_layer is None:
+        if get_invalid_actions_layer_obj is None:
             raise Exception("get_invalid_actions_layer is none")
 
-        self._get_invalid_actions_layer = get_invalid_actions_layer()
+        self._get_invalid_actions_layer = get_invalid_actions_layer_obj()
+        self._get_invalid_actions_obj = get_invalid_actions_layer_obj
+        self._original_action_logits = None
+        self._valid_actions = None
+        self._invalid_actions = None
 
         print("In CategoricalDistributionLimitedActions constructor")
 
@@ -364,10 +368,13 @@ class CategoricalDistributionLimitedActions(Distribution):
         if obs is None:
             raise Exception("In get_valid_actions the observation is None")
 
-        self.distribution = Categorical(logits=action_logits)
-
         invalid_actions_float = self._get_invalid_actions_layer(obs)
         invalid_actions = invalid_actions_float > 0.0
+
+        if False:
+            self._original_action_logits = action_logits
+            self._valid_actions = self._get_invalid_actions_obj.get_valid_actions(obs)
+            self._invalid_actions = invalid_actions
 
         # Create a distribution to use when sampling.
         # Adjust the logits so that the invalid actions have small probabilities.
@@ -377,6 +384,10 @@ class CategoricalDistributionLimitedActions(Distribution):
 
         new_action_logits = action_logits.clone()
         new_action_logits[invalid_actions] = invalid_logit_value
+
+        if False:
+            self._invalid_logit_value = invalid_logit_value
+            self._new_action_logits = new_action_logits
 
         if False:
             print("")
@@ -389,7 +400,7 @@ class CategoricalDistributionLimitedActions(Distribution):
             print("invalid_logit_value", invalid_logit_value)
             # traceback.print_stack(file=sys.stdout)
 
-        self.sample_distribution = Categorical(logits=new_action_logits)
+        self.distribution = Categorical(logits=new_action_logits)
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
@@ -399,7 +410,7 @@ class CategoricalDistributionLimitedActions(Distribution):
         return self.distribution.entropy()
 
     def sample(self) -> th.Tensor:
-        ret = self.sample_distribution.sample()
+        ret = self.distribution.sample()
 
         if False:
             print(self.distribution)
@@ -408,18 +419,21 @@ class CategoricalDistributionLimitedActions(Distribution):
             print(self.sample_distribution.logits)
             print("Sample", ret)
 
-        if True and self.sample_distribution.logits[0][ret] < -9.5:
+        if True and self.distribution.logits[0][ret] < -9.5:
             print("Invalid action")
             print(self.distribution)
             print(self.distribution.logits)
-            print(self.sample_distribution)
-            print(self.sample_distribution.logits)
+            print("Invalid_logit_value", self._invalid_logit_value)
+            print("original_action_logits", self._original_action_logits)
+            print("new_action_logits", self._new_action_logits)
+            print("invalid_actions", self._invalid_actions)
+            print("valid_actions", self._valid_actions)
             print("Sample", ret)
 
         return ret
 
     def mode(self) -> th.Tensor:
-        return th.argmax(self.sample_distribution.probs, dim=1)
+        return th.argmax(self.distribution.probs, dim=1)
 
     def actions_from_params(
         self, action_logits: th.Tensor, get_valid_actions, deterministic: bool = False
