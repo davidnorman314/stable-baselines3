@@ -12,6 +12,9 @@ from torch.distributions import Bernoulli, Categorical, Normal
 
 from stable_baselines3.common.preprocessing import get_action_dim
 
+import traceback
+import sys
+
 
 class Distribution(ABC):
     """Abstract base class for distributions."""
@@ -329,6 +332,117 @@ class CategoricalDistributionLimitedActions(Distribution):
     :param action_dim: Number of discrete actions
     """
 
+    def __init__(self, action_dim: int, get_invalid_actions_layer):
+        super().__init__()
+        self.action_dim = action_dim
+
+        if get_invalid_actions_layer is None:
+            raise Exception("get_invalid_actions_layer is none")
+
+        self._get_invalid_actions_layer = get_invalid_actions_layer()
+
+        print("In CategoricalDistributionLimitedActions constructor")
+
+    def proba_distribution_net(self, latent_dim: int) -> nn.Module:
+        """
+        Create the layer that represents the distribution:
+        it will be the logits of the Categorical distribution.
+        You can then get probabilities using a softmax.
+
+        :param latent_dim: Dimension of the last layer
+            of the policy network (before the action layer)
+        :return:
+        """
+        action_logits = nn.Linear(latent_dim, self.action_dim)
+        return action_logits
+
+    def proba_distribution(
+        self,
+        action_logits: th.Tensor,
+        obs: th.Tensor,
+    ) -> "CategoricalDistributionLimitedActions":
+        if obs is None:
+            raise Exception("In get_valid_actions the observation is None")
+
+        self.distribution = Categorical(logits=action_logits)
+
+        invalid_actions_float = self._get_invalid_actions_layer(obs)
+        invalid_actions = invalid_actions_float > 0.0
+
+        # Create a distribution to use when sampling.
+        # Adjust the logits so that the invalid actions have small probabilities.
+        invalid_logit_value = action_logits.min() - 10.0
+        if invalid_logit_value >= -10.0:
+            invalid_logit_value = -10.0
+
+        new_action_logits = action_logits.clone()
+        new_action_logits[invalid_actions] = invalid_logit_value
+
+        if False:
+            print("")
+            print("----------------------------")
+            print("")
+            print("action_logits", action_logits)
+            print("new_action_logits", new_action_logits)
+            print("invalid_actions", invalid_actions)
+            print("obs", obs)
+            print("invalid_logit_value", invalid_logit_value)
+            # traceback.print_stack(file=sys.stdout)
+
+        self.sample_distribution = Categorical(logits=action_logits)
+        return self
+
+    def log_prob(self, actions: th.Tensor) -> th.Tensor:
+        return self.distribution.log_prob(actions)
+
+    def entropy(self) -> th.Tensor:
+        return self.distribution.entropy()
+
+    def sample(self) -> th.Tensor:
+        ret = self.sample_distribution.sample()
+
+        if False:
+            print(self.distribution)
+            print(self.distribution.logits)
+            print(self.sample_distribution)
+            print(self.sample_distribution.logits)
+            print("Sample", ret)
+
+        if True and self.sample_distribution.logits[0][ret] < -9.5:
+            print("Invalid action")
+            print(self.distribution)
+            print(self.distribution.logits)
+            print(self.sample_distribution)
+            print(self.sample_distribution.logits)
+            print("Sample", ret)
+
+        return ret
+
+    def mode(self) -> th.Tensor:
+        return th.argmax(self.sample_distribution.probs, dim=1)
+
+    def actions_from_params(
+        self, action_logits: th.Tensor, get_valid_actions, deterministic: bool = False
+    ) -> th.Tensor:
+        # Update the proba distribution
+        self.proba_distribution(action_logits, get_valid_actions)
+        return self.get_actions(deterministic=deterministic)
+
+    def log_prob_from_params(
+        self, action_logits: th.Tensor, get_valid_actions
+    ) -> Tuple[th.Tensor, th.Tensor]:
+        actions = self.actions_from_params(action_logits, get_valid_actions)
+        log_prob = self.log_prob(actions)
+        return actions, log_prob
+
+
+class CategoricalDistributionLimitedActions_Manual(Distribution):
+    """
+    Categorical distribution for discrete actions where the valid actions are a subset of the total action space.
+
+    :param action_dim: Number of discrete actions
+    """
+
     def __init__(self, action_dim: int, get_valid_actions):
         super().__init__()
         self.action_dim = action_dim
@@ -379,10 +493,16 @@ class CategoricalDistributionLimitedActions(Distribution):
             all_valid_actions == 0, invalid_logit_value, action_logits
         )
 
-        if False:
+        if True:
+            print("")
+            print("----------------------------")
+            print("")
             print("action_logits", action_logits)
             print("new_action_logits", new_action_logits)
-            print("valid_actions", valid_actions)
+            print("obs", obs)
+            print("all_valid_actions", all_valid_actions)
+            print("invalid_logit_value", invalid_logit_value)
+            # traceback.print_stack(file=sys.stdout)
 
         self.sample_distribution = Categorical(logits=new_action_logits)
         return self
@@ -826,11 +946,19 @@ def make_proba_distribution(
     if dist_kwargs is None:
         dist_kwargs = {}
 
-    use_limited_actions = dist_kwargs.get("get_valid_actions") is not None
+    use_limited_actions = dist_kwargs.get(
+        "get_valid_actions"
+    ) is not None or dist_kwargs.get("get_invalid_actions_layer")
 
     if isinstance(action_space, spaces.Box):
         cls = StateDependentNoiseDistribution if use_sde else DiagGaussianDistribution
         return cls(get_action_dim(action_space), **dist_kwargs)
+    elif isinstance(action_space, spaces.Discrete) and use_limited_actions:
+        get_invalid_actions_layer = dist_kwargs["get_invalid_actions_layer"]
+        del dist_kwargs["get_invalid_actions_layer"]
+        return CategoricalDistributionLimitedActions(
+            action_space.n, get_invalid_actions_layer, **dist_kwargs
+        )
     elif isinstance(action_space, spaces.Discrete) and use_limited_actions:
         get_valid_actions = dist_kwargs["get_valid_actions"]
         del dist_kwargs["get_valid_actions"]

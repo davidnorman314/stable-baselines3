@@ -98,6 +98,8 @@ class BaseModel(nn.Module, ABC):
         self.features_extractor_class = features_extractor_class
         self.features_extractor_kwargs = features_extractor_kwargs
 
+        print("features_extractor_class", self.features_extractor_class)
+
     @abstractmethod
     def forward(self, *args, **kwargs):
         pass
@@ -531,6 +533,7 @@ class ActorCriticPolicy(BasePolicy):
         self.dist_kwargs = dist_kwargs
 
         self.get_valid_actions = dist_kwargs.get("get_valid_actions")
+        self.get_valid_actions_layer = dist_kwargs.get("get_valid_actions_layer")
 
         # Action distribution
         self.action_dist = make_proba_distribution(
@@ -743,6 +746,7 @@ class ActorCriticPolicy(BasePolicy):
         :return: estimated value, log likelihood of taking those actions
             and entropy of the action distribution.
         """
+
         # Preprocess the observation if needed
         features = self.extract_features(obs)
         latent_pi, latent_vf = self.mlp_extractor(features)
