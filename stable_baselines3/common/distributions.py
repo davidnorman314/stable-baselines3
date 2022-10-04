@@ -376,6 +376,24 @@ class CategoricalDistributionLimitedActions(Distribution):
         if False:
             self._valid_actions = self._get_invalid_actions_obj.get_valid_actions(obs)
 
+        # TODO: Figure out how to set the invalid action minimum on a per-action basis.
+        if False:
+            print("")
+            print("----------------------------")
+            print("")
+            print("action_logits", action_logits)
+            print("action_logits len", len(action_logits))
+            mint = action_logits.min(1, keepdim=True)
+            print("mint true", mint)
+            print("mint true len", len(mint.values))
+            # mint = action_logits.min(1, keepdim=False)
+            # print("mint false", mint)
+
+            print("invalid", invalid_actions)
+            test_new_action_logits = action_logits.clone()
+            test_new_action_logits[invalid_actions] = mint.values
+            print(test_new_action_logits)
+
         # Create a distribution to use when sampling.
         # Adjust the logits so that the invalid actions have small probabilities.
         invalid_logit_value = action_logits.min() - 10.0
@@ -418,7 +436,7 @@ class CategoricalDistributionLimitedActions(Distribution):
             print(self.sample_distribution.logits)
             print("Sample", ret)
 
-        if True and self.distribution.logits[0][ret] < -9.5:
+        if False and self.distribution.logits[0][ret] < -9.5:
             print("Invalid action")
             print(self.distribution)
             print(self.distribution.logits)
